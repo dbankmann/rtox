@@ -91,5 +91,6 @@ def main():
     if args.diff:
         os.system("git diff | tee untox-diff.log")
 
+
 if __name__ == '__main__':
     main()

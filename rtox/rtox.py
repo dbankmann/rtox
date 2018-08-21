@@ -156,7 +156,10 @@ def local_repo():
     output = subprocess.check_output(['git', 'remote', '--verbose']).decode()
 
     # Parse the output to find the fetch URL.
-    return output.split('\n')[0].split(' ')[0].split('\t')[1]
+    if output:
+        return output.split('\n')[0].split(' ')[0].split('\t')[1]
+    else:
+        return os.path.join(os.getcwd(), '.git')
 
 
 def local_diff():
@@ -198,7 +201,8 @@ def cli():
     if config.get('ssh', 'folder') == 'hash':
         target_folder = hashlib.sha1(repo.encode('utf-8')).hexdigest()
     else:
-        target_folder = re.sub('\.git$', '', repo.rsplit('/', 1)[-1])
+        target_folder = [re.sub('\.git$', '', x)
+                         for x in repo.rsplit('/') if x and x != '.git'][-1]
 
     remote_repo_path = '~/.rtox/%s' % target_folder.encode('utf-8')
     remote_untox = '~/.rtox/untox'
