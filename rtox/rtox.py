@@ -43,7 +43,8 @@ class Client(object):
                  hostname,
                  port=None,
                  user=getpass.getuser(),
-                 passenv=''):
+                 passenv='',
+                 python='python'):
         """Initialize an SSH client based on the given configuration."""
         if user:
             env.user = user
@@ -55,6 +56,7 @@ class Client(object):
         env.host_string = hostname
         self.rsync_host_string = hostname  # port need to be separated
         self.full_host_string = "%s@%s" % (user, hostname)
+        self.python = python
 
         if port:
             env.host_string += ":%s" % port
@@ -67,9 +69,7 @@ class Client(object):
             # Load excludes from .gitignore
             # See https://stackoverflow.com/a/15373763/99834
             self.rsync_params += \
-                '--include .git --exclude-from="$(git ls-files ' \
-                '--exclude-standard -oi --directory >.git/ignores.tmp && ' \
-                'echo .git/ignores.tmp)" '
+                '--include .git --exclude-from=.git/ignores.tmp '
         else:
             for exclude in ['.tox', '.pytest_cache', '*.pyc', '__pycache__']:
                 self.rsync_params += '--exclude %s ' % exclude
@@ -134,6 +134,7 @@ def load_config():
     config.set('ssh', 'port', '')
     config.set('ssh', 'passenv', '')
     config.set('ssh', 'folder', 'hash')
+    config.set('ssh', 'python', 'python')
 
     dir = os.getcwd()
     while dir:
@@ -211,33 +212,41 @@ def cli():
         config.get('ssh', 'hostname'),
         port=config.get('ssh', 'port'),
         user=config.get('ssh', 'user'),
-        passenv=config.get('ssh', 'passenv'))
+        passenv=config.get('ssh', 'passenv'),
+        python=config.get('ssh', 'python'))
 
     # Bail immediately if we don't have what we need on the remote host.
     # We prefer to check if python modules are installed instead of the cli
     # scipts because on some platforms (like MacOS) script may not be in PATH.
-    for cmd in ['python -m pip install --user tox tox-pyenv virtualenv',
-                'python -m virtualenv --version',
-                'python -m tox --version']:
-        result = client.run(cmd, silent=True)
-        if result.failed:
-            raise SystemExit(
-                'Remote command `%s` returned %s. Output: %s' %
-                (result.real_command,
-                 result.return_code,
-                 result.stderr))
+    cmd_bootstrap = """
+    set -exo pipefail
+    %(python)s -m pip install --user tox virtualenv
+    which pyenv && %(python)s -m pip install --user tox-pyenv || \
+        echo "pyenv not detected"
+    %(python)s -m virtualenv --version
+    %(python)s -m tox --version
+    """ % {'python': client.python}
+    result = client.run(cmd_bootstrap, silent=True)
+    if result.failed:
+        raise SystemExit(
+            'Remote command `%s` returned %s. Output: %s' %
+            (result.real_command,
+                result.return_code,
+                result.stderr))
 
     # Ensure we have a directory to work with on the remote host.
     client.run('mkdir -p %s' % remote_repo_path, silent=True)
 
     # Clone the repository we're working on to the remote machine.
     rsync_path = '%s:%s' % (
-        client.rsync_host_string,
+        client.full_host_string,
         remote_repo_path.replace('~', '\~'))
     logging.info('Syncing the local repository to %s ...' % rsync_path)
     # Distributing .tox folder would be nonsense and most likely cause
     # breakages.
-    client.local('rsync %s--update --delete -a . %s' % (
+    client.local(
+        'git ls-files --exclude-standard -oi --directory >.git/ignores.tmp')
+    client.local('rsync %s--update --delete -ah . %s' % (
                  client.rsync_params,
                  rsync_path))
 
@@ -264,11 +273,12 @@ def cli():
 
     # removing .tox folder is done
     if args.untox:
-        command = ['%s; %s; python -m tox' %
+        command = ['%s; %s; %s -m tox' %
                    (remote_untox,
-                    "pip install --no-deps -e .")]
+                    "pip install --no-deps -e .",
+                    client.python)]
     else:
-        command = ['python -m tox']
+        command = ['%s -m tox' % client.python]
     command.extend(tox_args)
 
     cmd = ' '.join(command)
