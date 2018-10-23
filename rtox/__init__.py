@@ -24,8 +24,7 @@ verbosity = os.getenv('RTOX_VERBOSITY', '0')
 verbosity_map = {
     '0': logging.WARN,
     '1': logging.INFO,
-    '2': logging.DEBUG
-    }
+    '2': logging.DEBUG}
 logging.basicConfig(format=FORMAT, level=verbosity_map[verbosity])
 
 __all__ = (

@@ -1,6 +1,6 @@
 .. image:: https://travis-ci.org/pycontribs/rtox.svg?branch=master
     :target: https://travis-ci.org/pycontribs/rtox
- 
+
 ``rtox``
 ========
 
@@ -80,4 +80,3 @@ are made in-place without any backup.
 You also have the option to call ``rtox --untox ...`` which will run untox
 on the remote system after doing the rsync and before running tox. This
 option is handy as it keeps the local repository untoched.
-
